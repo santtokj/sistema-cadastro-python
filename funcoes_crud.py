@@ -1,123 +1,157 @@
 import os
 import msvcrt
-import json
+import mysql.connector
+from database import conectar, criar_cursor
 
 class GerenciadorUsuarios:
-    def __init__(self, arquivo_json="usuarios.json"):
-        self.arquivo_json = arquivo_json
-        self.usuarios = {}
-        self.carregar_dados()
-
-    def salvar_dados(self):
-        with open(self.arquivo_json, "w", encoding="utf-8") as f:
-            json.dump(self.usuarios, f, ensure_ascii=False, indent=4)
-
-    def carregar_dados(self):
-        if os.path.exists(self.arquivo_json):
-            try:
-                with open(self.arquivo_json, "r", encoding="utf-8") as f:
-                    dados_brutos = json.load(f)   
-                    self.usuarios = {int(k): v for k, v in dados_brutos.items()}
-            except (json.JSONDecodeError, ValueError):
-                self.usuarios = {}
-        else:
-            self.usuarios = {}
+    def __init__(self):
+        pass
 
     def nome_cadastrado(self, nome_cadastro):
         return len(nome_cadastro) >= 3 and nome_cadastro.replace(" ", "").isalpha()
+    
+    def email_cadastrado(self, email_valida):
+        return "@" in email_valida and "." in email_valida
 
     def cadastrar_usuario(self):
         os.system('cls' if os.name == 'nt' else 'clear')
-        print("\n --- MODO DE CADASTRO ---")
+        print("\n --- MODO DE CADASTRO (MySQL) ---")
         while True:
-            novo_cadastro = input("Digite o nome de usuário (ou [Enter] para sair): ").strip().title()
-            if not novo_cadastro:
-                print("Finalizando cadastro!")
-                break
+            novo_cadastro = input("Digite o nome (ou [Enter] para sair): ").strip().title()
+            if not novo_cadastro: break
             
             if self.nome_cadastrado(novo_cadastro):
-                novo_id = max(self.usuarios.keys()) + 1 if self.usuarios else 0
-                self.usuarios[novo_id] = novo_cadastro
-                self.salvar_dados()
-                print(f"✅ {novo_cadastro} adicionado com ID: {novo_id}!")
+                novo_email = input(f"E-mail para {novo_cadastro}: ").strip().lower()
+                if not self.email_cadastrado(novo_email):
+                    print("❌ Erro: E-mail inválido!")
+                    continue
+                
+                try:
+                    conn = conectar()
+                    cursor = criar_cursor(conn)
+                    sql = "INSERT INTO usuarios (nome_usuarios, email_usuarios) VALUES (%s, %s)"
+                    cursor.execute(sql, (novo_cadastro, novo_email))
+                    conn.commit()
+                    print(f"✅ {novo_cadastro} salvo com sucesso!")
+                except mysql.connector.Error as err:
+                    print(f"❌ Erro no Banco: {err}")
+                finally:
+                    cursor.close()
+                    conn.close()
             else:
-                print("❌ Erro: O nome deve ter 3+ letras e apenas letras!")
+                print("❌ Erro: Nome inválido!")
 
     def lista_usuario(self):
         while True:
             os.system('cls' if os.name == 'nt' else 'clear')
-            print("\n-- Lista de Usuários --")
-            if not self.usuarios:
-                print("A lista está vazia!")
-                msvcrt.getch()
-                break
-            else:
-                print(f"\n--- {len(self.usuarios)} USUÁRIOS ENCONTRADOS ---")
-                for id_real, nome in self.usuarios.items():
-                    print(f"ID: {id_real} | Nome: {nome}")
+            print("\n-- Lista de Usuários (Puxada do MySQL) --")
+            
+            try:
+                conn = conectar()
+                cursor = criar_cursor(conn)
+                cursor.execute("SELECT * FROM usuarios")
+                usuarios = cursor.fetchall() 
                 
-                print("\n [1] Editar | [2] Remover | [ENTER] Voltar ao menu")
-                acao = input("Selecione: ").strip()
-                if acao == "1":
-                    self.editar_usuario()
-                elif acao == "2":
-                    self.menu_remoção()
+                if not usuarios:
+                    print("A lista está vazia!")
+                    msvcrt.getch()
+                    break
+                else:
+                    print(f"\n--- {len(usuarios)} USUÁRIOS ENCONTRADOS ---")
+                    for user in usuarios:
+                        print(f"ID: {user[0]} | Nome: {user[1]} | E-mail: {user[2]} | Data: {user[3]}")
+                    
+                    print("\n [1] Editar | [2] Remover | [ENTER] Voltar ao menu")
+                    acao = input("Selecione: ").strip()
+                    if acao == "1":
+                        self.editar_usuario()
+                    elif acao == "2":
+                        self.menu_remoção()
+                    else:
+                        break
+            except mysql.connector.Error as err:
+                print(f"Erro: {err}")
+                break
+            finally:
+                cursor.close()
+                conn.close()
 
     def editar_usuario(self):
-        while True:
-            try:
-                att = input("\nID para editar (ou digite [Sair] para cancelar): ").strip().lower()
-                if att == "sair": break
+        att = input("\nID para editar (ou [Sair]): ").strip()
+        if att.lower() == "sair": return
+        
+        novo_nome = input("Novo nome (ou Enter para manter): ").strip().title()
+        novo_email = input("Novo e-mail (ou Enter para manter): ").strip().lower()
+
+        try:
+            conn = conectar()
+            cursor = criar_cursor(conn)
+            
+            cursor.execute("SELECT nome_usuarios, email_usuarios FROM usuarios WHERE idusuarios = %s", (att,))
+            atual = cursor.fetchone()
+            
+            if atual:
+                nome_f = novo_nome if novo_nome else atual[0]
+                email_f = novo_email if novo_email else atual[1]
                 
-                indice = int(att)
-                if indice in self.usuarios:
-                    print(f"Usuário selecionado: {self.usuarios[indice]}")
-                    novo_nome = input("Digite o novo nome (ou [Enter] para cancelar): ").strip().title()
-                    
-                    if not novo_nome:
-                        print("Edição cancelada!")
-                        break
-                    
-                    if self.nome_cadastrado(novo_nome):
-                        self.usuarios[indice] = novo_nome
-                        self.salvar_dados()
-                        print("✅ Sucesso!")
-                        break
-                    else:
-                        print("❌ Nome inválido!")
-                else:
-                    print("❌ ID não existe!")
-            except ValueError:
-                print("Erro: Digite apenas números!")
+                sql = "UPDATE usuarios SET nome_usuarios = %s, email_usuarios = %s WHERE idusuarios = %s"
+                cursor.execute(sql, (nome_f, email_f, att))
+                conn.commit()
+                print("✅ Atualizado!")
+            else:
+                print("❌ ID não encontrado!")
+        finally:
+            cursor.close()
+            conn.close()
+            msvcrt.getch()
 
     def menu_remoção(self):
-        print("\n[1] Remover por ID | [2] Reset Total | [Enter] Voltar")
-        sub_escolha = input("Selecionar: ").strip()
+        print("\n[1] Remover por ID | [2] Reset Total")
+        escolha = input("Selecionar: ").strip()
         
-        if sub_escolha == "1":
-            self.remover_usuario()
-        elif sub_escolha == "2":
-            confirmar = input("Digite [resetar] para apagar TUDO: ").strip().lower()
-            if confirmar == "resetar":
-                self.usuarios.clear()
-                self.salvar_dados()
-                print("💥 Lista resetada!")
+        if escolha == "1":
+            id_del = input("ID para remover: ").strip()
+            try:
+                conn = conectar()
+                cursor = criar_cursor(conn)
+                cursor.execute("DELETE FROM usuarios WHERE idusuarios = %s", (id_del,))
+                conn.commit()
+                print("✅ Removido!")
+            finally:
+                cursor.close()
+                conn.close()
+                msvcrt.getch()
+        #Função bugada, evitar uso momentaneamente!!!
+        elif escolha == "2":
+            confirmar = input("⚠️ ATENÇÃO: Deseja apagar TODOS os usuários? (S/N): ").upper().strip()
+            if confirmar == "S":
+                try:
+                    conn = conectar()
+                    cursor = criar_cursor(conn)
+                    cursor.execute("TRUNCATE TABLE usuarios")
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+                    print("💥 Banco de dados resetado!")
+                except mysql.connector.Error as err:
+                    print(f"❌ Erro ao resetar: {err}")
+                
+                input("Pressione [Enter] para continuar...")
             else:
-                print("Ação cancelada.")
-
-    def remover_usuario(self):
-        try:    
-            entrada = input("ID para remover (ou [Enter] para cancelar): ").strip()
-            if not entrada: return
-            
-            indice = int(entrada)
-            if indice in self.usuarios:
-                confirmar = input(f"Remover {self.usuarios[indice]}? (S/N): ").strip().upper()
-                if confirmar == "S":
-                    removido = self.usuarios.pop(indice)
-                    self.salvar_dados()
-                    print(f"✅ {removido} removido!")
+                print("Operação cancelada.")
+                msvcrt.getch()
+                
+    def sair_sistema(self):
+        while True:
+            confirmar = input("Deseja realmente sair? (S/N): ").upper().strip()
+            if confirmar == "S":
+                print("Encerrando o sistema... até logo!")
+                msvcrt.getch()
+                return True
+            elif confirmar == "N":
+                print("\nRetornando ao menu...")
+                print("Aperte [Enter] para continuar")
+                msvcrt.getch()
+                return False 
             else:
-                print("❌ ID não encontrado.")
-        except ValueError:
-            print("❌ Digite um número válido.")
+                print("Erro: Digite apenas 'S' ou 'N'!")

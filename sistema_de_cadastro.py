@@ -2,6 +2,7 @@ import msvcrt
 import os
 from funcoes_crud import GerenciadorUsuarios
 
+
 sistema = GerenciadorUsuarios()
 while True:
     os.system("cls" if os.name == "nt" else "clear") 
@@ -20,27 +21,8 @@ while True:
             sistema.lista_usuario()
             msvcrt.getch()
         case "3":
-            sair_de_vez = False
-            while True:
-                confirmar = input("Deseja realmente sair? (S/N): ").upper().strip()
-                if confirmar == "S":
-                    print("Encerrando o sistema... até logo!")
-                    msvcrt.getch()
-                    sair_de_vez = True
-                    break
-                elif confirmar == "N":
-                    print("\nRetornando ao menu...")
-                    print("Aperte [enter] para continuar")
-                    msvcrt.getch()
-                    break
-                else:
-                    print("Erro: Digite apenas 'S' ou 'N'!")
-            if sair_de_vez:
+            if sistema.sair_sistema():
                 break
-        case _:
-            print("Opção inválida!")
-            print("Aperte [enter] para voltar ao menu")
-            msvcrt.getch()
 
 # TODO
 # Arrumar visual
